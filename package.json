@@ -1,5 +1,5 @@
 {
-  "name": "f3-ns-file-sync",
+  "name": "f3-file-sync",
   "version": "1.0.0",
   "description": "syncs local file/folder to remote file cabinet",
   "main": "app.js",
@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^0.20.0",
+    "cwait": "^1.1.2",
     "form-data": "^3.0.0"
   }
 }
