@@ -5,6 +5,7 @@ let path = require("path");
 let FormData = require('form-data');
 let cwait = require("cwait");
 let TaskQueue = cwait.TaskQueue;
+let input = require("readline-sync");
 
 let fileMap = {};
 fileMap.appcache = "APPCACHE";
@@ -75,41 +76,31 @@ fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 
 let queue = new TaskQueue(Promise, 40);
 
-let IGNORE = ".syncignore";
-let CONFIG = ".sync";
-let URL = "";
+let IGNORE = ".f3syncignore";
+let CONFIG = ".f3sync";
 
-function cli() {
-    let args = process.argv.slice(2);
-    if (args[0] == "init") init(args[1] || "");
-    else if (args[0] == "sync") sync(args[1] || ".", args[2] || "-15");
-    else help();
-}
+exports.init = function () {
+    let url = input.question("enter suitlet url\n").trim();
+    let parent = input.question("enter parent folder id (default is -15)\n").trim() || "-15";
+    fsSync.writeFileSync(CONFIG, JSON.stringify({ url, parent }));
+    fsSync.writeFileSync(INGORE, ".git\n.gitignore\n.f3sync\n.f3syncignore\nnode_modules");
+};
 
-cli();
-
-function init(url) {
-    if (url) fsSync.writeFileSync(CONFIG, JSON.stringify({ URL: url }));
-    else help();
-}
-
-function help() {
-    console.log("help");
-}
-
-async function sync(file, parent) {
-    let filePath = path.resolve(__dirname, file);
+exports.sync = async function (file, parent) {
+    let filePath = path.resolve(file);
+    let forced = false;
     if (!fsSync.existsSync(CONFIG) || !fsSync.existsSync(filePath)) {
-        help();
+        console.log("invalid usage");
         return;
     }
     let obj = JSON.parse(fsSync.readFileSync(CONFIG));
-    URL = obj.URL;
+    if (parent) forced = true;
+    else parent = obj.parent;
     let ignore = [];
-    if (fsSync.existsSync(IGNORE)) fsSync.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").map(line => line ? ignore.push(path.resolve(__dirname, line)) : line);
+    if (fsSync.existsSync(IGNORE)) fsSync.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").map(line => line.trim() ? ignore.push(path.resolve(line)) : line);
     console.log(ignore);
     await _sync(filePath, parent);
-    fsSync.writeFileSync(CONFIG, JSON.stringify(obj));
+    if (!forced) fsSync.writeFileSync(CONFIG, JSON.stringify(obj));
 
     // helper
     async function _sync(filePath, parent) {
@@ -120,9 +111,9 @@ async function sync(file, parent) {
             parent
         };
         if (stats.isDirectory()) {
-            if (!obj[filePath]) {
+            if (!obj[filePath] || forced) {
                 body.type = "folder";
-                let result = await request(URL, body);
+                let result = await request(obj.url, body);
                 if (result.id) {
                     console.log(`${filePath} synced`);
                     obj[filePath] = result.id;
@@ -136,7 +127,7 @@ async function sync(file, parent) {
             files.map(file => promises.push(file));
             await Promise.all(promises.map(queue.wrap(file => _sync(path.resolve(filePath, file), obj[filePath]))));
         } else if (stats.isFile()) {
-            if (obj[filePath] === stats.mtimeMs) return;
+            if (obj[filePath] === stats.mtimeMs && !forced) return;
             body.type = "file";
             body.extension = fileMap[path.extname(filePath).substring(1).toLowerCase()] || "PLAINTEXT";
             if (["CERTIFICATE", "CONFIG", "CSV", "HTMLDOC", "JAVASCRIPT", "JSON", "PLAINTEXT", "SCSS", "STYLESHEET", "XMLDOC"].includes(body.extension)) {
@@ -145,7 +136,7 @@ async function sync(file, parent) {
             else {
                 body.contents = await fs.readFile(filePath, { encoding: 'base64' });
             }
-            let result = await request(URL, body);
+            let result = await request(obj.url, body);
             if (result.id) {
                 console.log(`${filePath} synced`);
                 obj[filePath] = stats.mtimeMs;
@@ -154,7 +145,7 @@ async function sync(file, parent) {
             }
         }
     }
-}
+};
 
 async function request(url, body) {
     try {

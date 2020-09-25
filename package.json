@@ -3,14 +3,16 @@
   "version": "1.0.0",
   "description": "syncs local file/folder to remote file cabinet",
   "main": "app.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "preferGlobal": true,
+  "bin": {
+    "f3-file-sync": "cli.js"
   },
   "author": "Hussain Yousuf",
   "license": "ISC",
   "dependencies": {
     "axios": "^0.20.0",
     "cwait": "^1.1.2",
-    "form-data": "^3.0.0"
+    "form-data": "^3.0.0",
+    "readline-sync": "^1.4.10"
   }
 }
