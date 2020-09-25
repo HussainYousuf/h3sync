@@ -2,4 +2,3 @@
 .gitignore
 .sync
 .syncignore
-node_modules
