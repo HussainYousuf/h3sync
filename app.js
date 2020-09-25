@@ -83,7 +83,7 @@ exports.init = function () {
     let url = input.question("enter suitlet url\n").trim();
     let parent = input.question("enter parent folder id (default is -15)\n").trim() || "-15";
     fsSync.writeFileSync(CONFIG, JSON.stringify({ url, parent }));
-    fsSync.writeFileSync(INGORE, ".git\n.gitignore\n.f3sync\n.f3syncignore\nnode_modules");
+    fsSync.writeFileSync(IGNORE, ".git\n.gitignore\n.f3sync\n.f3syncignore\nnode_modules");
 };
 
 exports.sync = async function (file, parent) {
