@@ -91,7 +91,8 @@ exports.watch = async function (file, parent) {
     }
 };
 
-exports.sync = async function (file = ".", parent = "-15", force = true) {
+exports.sync = sync;
+async function sync(file = ".", parent = "-15", force = true) {
     let filePath = path.resolve(file);
     if (!fsSync.existsSync(CONFIG)) {
         console.log("run 'f3sync init' first");
@@ -108,7 +109,6 @@ exports.sync = async function (file = ".", parent = "-15", force = true) {
     if (fsSync.existsSync(IGNORE)) ignore = fsSync.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n");
     ignore = ignore.filter(file => file.trim());
     ignore = ignore.map(file => path.resolve(file));
-    console.log(ignore);
     await _sync(filePath, parent);
     config[parent] = obj;
     if (!force) fsSync.writeFileSync(CONFIG, JSON.stringify(config));
@@ -123,7 +123,7 @@ exports.sync = async function (file = ".", parent = "-15", force = true) {
         if (stats.isDirectory()) {
             if (!obj[filePath]) {
                 body.type = "folder";
-                let result = await request(obj.url, body);
+                let result = await request(config.url, body);
                 if (result.id) {
                     console.log(`${filePath} synced`);
                     obj[filePath] = result.id;
@@ -146,7 +146,7 @@ exports.sync = async function (file = ".", parent = "-15", force = true) {
             else {
                 body.contents = await fs.readFile(filePath, { encoding: 'base64' });
             }
-            let result = await request(obj.url, body);
+            let result = await request(config.url, body);
             if (result.id) {
                 console.log(`${filePath} synced`);
                 obj[filePath] = stats.mtimeMs;
@@ -159,6 +159,7 @@ exports.sync = async function (file = ".", parent = "-15", force = true) {
 
 async function request(url, body) {
     try {
+        console.log("sync in progress...");
         let form = new FormData();
         form.append('body', JSON.stringify(body));
         let headers = Object.assign({ "User-Agent": "Mozilla/5.0" }, form.getHeaders());
