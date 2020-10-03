@@ -1,13 +1,12 @@
-let axios = require("axios");
-let fs = require('fs/promises');
-let fsSync = require("fs");
-let path = require("path");
-let FormData = require('form-data');
-let cwait = require("cwait");
-let TaskQueue = cwait.TaskQueue;
-let input = require("readline-sync");
+const axios = require("axios");
+const fs = require('fs/promises');
+const fsSync = require("fs");
+const path = require("path");
+const FormData = require('form-data');
+const cwait = require("cwait");
+const input = require("readline-sync");
+const fileMap = {};
 
-let fileMap = {};
 fileMap.appcache = "APPCACHE";
 fileMap.dwf = "AUTOCAD";
 fileMap.dwg = "AUTOCAD";
@@ -74,35 +73,46 @@ fileMap.xml = "XMLDOC";
 fileMap.xsd = "XSD";
 fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 
-let queue = new TaskQueue(Promise, 40);
+const queue = new cwait.TaskQueue(Promise, 40);
 
-let IGNORE = ".f3syncignore";
-let CONFIG = ".f3sync";
+const IGNORE = ".f3ignore";
+const CONFIG = path.resolve(__dirname, ".config");
 
 exports.init = function () {
-    let url = input.question("enter suitlet url\n").trim();
-    let parent = input.question("enter parent folder id (default is -15)\n").trim() || "-15";
-    fsSync.writeFileSync(CONFIG, JSON.stringify({ url, parent }));
-    fsSync.writeFileSync(IGNORE, ".git\n.gitignore\n.f3sync\n.f3syncignore\nnode_modules");
+    console.log("enter suitelet url");
+    fsSync.writeFileSync(CONFIG, JSON.stringify({ url: input.prompt() }));
+    fsSync.writeFileSync(IGNORE, ".git\n.gitignore\n.f3ignore\nnode_modules");
 };
 
-exports.sync = async function (file, parent) {
+exports.watch = async function (file, parent) {
+    while (true) {
+        await sync(file, parent, false);
+        await new Promise(r => setTimeout(r, 1000));
+    }
+};
+
+exports.sync = async function (file = ".", parent = "-15", force = true) {
     let filePath = path.resolve(file);
-    let forced = false;
-    if (!fsSync.existsSync(CONFIG) || !fsSync.existsSync(filePath)) {
-        console.log("invalid usage");
+    if (!fsSync.existsSync(CONFIG)) {
+        console.log("run 'f3sync init' first");
         return;
     }
-    let obj = JSON.parse(fsSync.readFileSync(CONFIG));
-    if (parent) forced = true;
-    else parent = obj.parent;
+    if (!fsSync.existsSync(filePath)) {
+        console.log("file does not exists");
+        return;
+    }
+    let config = JSON.parse(fsSync.readFileSync(CONFIG));
+    let obj = {};
+    if (!force && config[parent]) obj = config[parent];
     let ignore = [];
-    if (fsSync.existsSync(IGNORE)) fsSync.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").map(line => line.trim() ? ignore.push(path.resolve(line)) : line);
+    if (fsSync.existsSync(IGNORE)) ignore = fsSync.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n");
+    ignore = ignore.filter(file => file.trim());
+    ignore = ignore.map(file => path.resolve(file));
     console.log(ignore);
     await _sync(filePath, parent);
-    if (!forced) fsSync.writeFileSync(CONFIG, JSON.stringify(obj));
+    config[parent] = obj;
+    if (!force) fsSync.writeFileSync(CONFIG, JSON.stringify(config));
 
-    // helper
     async function _sync(filePath, parent) {
         if (ignore.includes(filePath)) return;
         let stats = await fs.stat(filePath);
@@ -111,7 +121,7 @@ exports.sync = async function (file, parent) {
             parent
         };
         if (stats.isDirectory()) {
-            if (!obj[filePath] || forced) {
+            if (!obj[filePath]) {
                 body.type = "folder";
                 let result = await request(obj.url, body);
                 if (result.id) {
@@ -127,7 +137,7 @@ exports.sync = async function (file, parent) {
             files.map(file => promises.push(file));
             await Promise.all(promises.map(queue.wrap(file => _sync(path.resolve(filePath, file), obj[filePath]))));
         } else if (stats.isFile()) {
-            if (obj[filePath] === stats.mtimeMs && !forced) return;
+            if (obj[filePath] === stats.mtimeMs) return;
             body.type = "file";
             body.extension = fileMap[path.extname(filePath).substring(1).toLowerCase()] || "PLAINTEXT";
             if (["CERTIFICATE", "CONFIG", "CSV", "HTMLDOC", "JAVASCRIPT", "JSON", "PLAINTEXT", "SCSS", "STYLESHEET", "XMLDOC"].includes(body.extension)) {
@@ -155,6 +165,6 @@ async function request(url, body) {
         let result = await axios.post(url, form, { headers });
         return result.data;
     } catch (error) {
-        console.log(error);
+        return {};
     }
 }

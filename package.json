@@ -1,11 +1,11 @@
 {
-  "name": "f3-file-sync",
+  "name": "f3sync",
   "version": "1.0.0",
   "description": "syncs local file/folder to remote file cabinet",
   "main": "app.js",
   "preferGlobal": true,
   "bin": {
-    "f3-file-sync": "cli.js"
+    "f3sync": "cli.js"
   },
   "author": "Hussain Yousuf",
   "license": "ISC",
