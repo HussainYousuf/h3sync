@@ -76,7 +76,7 @@ fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 const queue = new cwait.TaskQueue(Promise, 40);
 
 const IGNORE = ".f3ignore";
-const CONFIG = path.resolve(__dirname, ".config");
+const CONFIG = ".f3config";
 
 exports.init = function () {
     console.log("enter suitelet url");
