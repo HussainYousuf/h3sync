@@ -1,0 +1,5 @@
+.git
+.gitignore
+.f3ignore
+.f3config
+node_modules

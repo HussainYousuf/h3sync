@@ -1,15 +1,17 @@
 {
-  "name": "f3sync",
+  "name": "h3-sync",
   "version": "1.0.0",
   "description": "syncs local file/folder to remote file cabinet",
   "main": "app.js",
   "preferGlobal": true,
   "bin": {
-    "f3sync": "cli.js"
+    "h3-sync": "cli.js"
   },
   "author": "Hussain Yousuf",
   "license": "ISC",
   "dependencies": {
+    "@types/node": "^14.11.10",
+    "@types/readline-sync": "^1.4.3",
     "axios": "^0.20.0",
     "cwait": "^1.1.2",
     "form-data": "^3.0.0",
