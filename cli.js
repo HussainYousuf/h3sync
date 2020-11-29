@@ -10,6 +10,6 @@ function cli() {
     else if (args[0] == "sync")
         sync(args[1], args[2], args[3]);
     else
-        console.log("invalid usage");
+        console.log("usage: \nh3-sync init\nh3-sync watch\nh3-sync sync");
 }
 cli();

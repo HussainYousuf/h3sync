@@ -82,7 +82,7 @@ export function init() {
     console.log("enter key");
     const key = prompt();
     writeFileSync(CONFIG, JSON.stringify({ url, key }));
-    writeFileSync(IGNORE, ".git\n.gitignore\n.h3ignore\n.h3config\nnode_modules");
+    writeFileSync(IGNORE, ".git\n.gitignore\n.h3ignore\n.h3history\nnode_modules");
     writeFileSync(HISTORY, "{}");
 };
 
@@ -114,7 +114,7 @@ export async function sync(file = ".", parent = "-15", force = true) {
     const ignore = readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file));
     await _sync(filePath, parent);
     history[parent] = obj;
-    if (!force) writeFileSync(CONFIG, JSON.stringify(config));
+    if (!force) writeFileSync(HISTORY, JSON.stringify(history));
 
     async function _sync(filePath: string, parent: string) {
         if (ignore.includes(filePath)) return { status: true };

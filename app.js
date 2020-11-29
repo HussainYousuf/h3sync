@@ -76,12 +76,17 @@ fileMap.doc = fileMap.docx = fileMap.dot = "WORD";
 fileMap.xml = "XMLDOC";
 fileMap.xsd = "XSD";
 fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
-const IGNORE = ".f3ignore";
-const CONFIG = ".f3config";
+const IGNORE = ".h3ignore";
+const CONFIG = path_1.resolve(__dirname, ".h3config");
+const HISTORY = ".h3history";
 function init() {
     console.log("enter suitelet url");
-    fs_1.writeFileSync(CONFIG, JSON.stringify({ url: readline_sync_1.prompt() }));
-    fs_1.writeFileSync(IGNORE, ".git\n.gitignore\n.f3ignore\n.f3config\nnode_modules");
+    const url = readline_sync_1.prompt();
+    console.log("enter key");
+    const key = readline_sync_1.prompt();
+    fs_1.writeFileSync(CONFIG, JSON.stringify({ url, key }));
+    fs_1.writeFileSync(IGNORE, ".git\n.gitignore\n.h3ignore\n.h3history\nnode_modules");
+    fs_1.writeFileSync(HISTORY, "{}");
 }
 exports.init = init;
 ;
@@ -97,28 +102,31 @@ exports.watch = watch;
 async function sync(file = ".", parent = "-15", force = true) {
     const filePath = path_1.resolve(file);
     if (!fs_1.existsSync(CONFIG) && !fs_1.existsSync(IGNORE)) {
-        console.log("run 'f3sync init' first");
+        console.log("run 'h3-sync init' first");
         return;
     }
     if (!fs_1.existsSync(filePath)) {
         console.log("file does not exists");
         return;
     }
+    const history = JSON.parse(fs_1.readFileSync(HISTORY, { encoding: "utf-8" }));
     const config = JSON.parse(fs_1.readFileSync(CONFIG, { encoding: "utf-8" }));
     const url = config.url;
-    const obj = !force && config[parent] ? config[parent] : {};
+    const key = config.key;
+    const obj = !force && history[parent] ? history[parent] : {};
     const ignore = fs_1.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => path_1.resolve(file));
     await _sync(filePath, parent);
-    config[parent] = obj;
+    history[parent] = obj;
     if (!force)
-        fs_1.writeFileSync(CONFIG, JSON.stringify(config));
+        fs_1.writeFileSync(HISTORY, JSON.stringify(history));
     async function _sync(filePath, parent) {
         if (ignore.includes(filePath))
             return { status: true };
         const stats = await promises_1.stat(filePath);
         const body = {
             name: path_1.basename(filePath),
-            parent
+            parent,
+            key
         };
         if (stats.isDirectory()) {
             if (!obj[filePath]) {
