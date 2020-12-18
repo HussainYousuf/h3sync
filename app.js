@@ -79,6 +79,7 @@ fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 const IGNORE = ".h3ignore";
 const CONFIG = path_1.resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
+const onWatchIgnore = [];
 function init() {
     console.log("enter suitelet url");
     const url = readline_sync_1.prompt();
@@ -114,7 +115,7 @@ async function sync(file = ".", parent = "-15", force = true) {
     const url = config.url;
     const key = config.key;
     const obj = !force && history[parent] ? history[parent] : {};
-    const ignore = fs_1.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => path_1.resolve(file));
+    const ignore = [...fs_1.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => path_1.resolve(file)), ...onWatchIgnore];
     await _sync(filePath, parent);
     history[parent] = obj;
     if (!force)
@@ -147,6 +148,7 @@ async function sync(file = ".", parent = "-15", force = true) {
                 files = results.filter(result => !result.status).map(result => result.value);
                 if (results.filter(result => result.status).length < 1) {
                     console.log(`unable to sync these files: ${files}`);
+                    onWatchIgnore.push(...files);
                     break;
                 }
                 ;
