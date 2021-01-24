@@ -77,6 +77,11 @@ const CONFIG = resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
 const onWatchIgnore: string[] = [];
 
+if (!existsSync(CONFIG)) {
+    console.log("run 'h3-sync init' first");
+    process.exit();
+}
+
 export function init() {
     console.log("enter suitelet url");
     const url = prompt();
@@ -87,36 +92,32 @@ export function init() {
     writeFileSync(HISTORY, "{}");
 };
 
-export async function watch(file: string, parent: string) {
-    console.log("watch started");
-    while (true) {
-        await sync(file, parent, false);
-        await new Promise(r => setTimeout(r, 1000));
-    }
-};
-
-export async function sync(file = ".", parent = "-15", force = true) {
+export async function watch(file = ".", parent = "-15") {
     const filePath = resolve(file);
-    if (!existsSync(CONFIG) && !existsSync(IGNORE)) {
-        console.log("run 'h3-sync init' first");
-        return;
-    }
     if (!existsSync(filePath)) {
         console.log("file does not exists");
         return;
     }
+    console.log("watch started");
+    while (true) {
+        await sync(filePath, parent, false);
+        await new Promise(r => setTimeout(r, 500));
+    }
+};
 
-    const history = JSON.parse(readFileSync(HISTORY, { encoding: "utf-8" }));
-    const config: { url: string, key: string; } = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" }));
-    const url = config.url;
-    const key = config.key;
+const history = JSON.parse(readFileSync(HISTORY, { encoding: "utf-8" }));
+const { url, key }: { url: string, key: string; } = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" }));
+const ignore = readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file));
 
+export async function sync(filePath: string, parent: string, force: boolean) {
+
+    let objChanged = false;
     const obj = !force && history[parent] ? history[parent] : {};
-    const ignore = [...readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file)), ...onWatchIgnore];
+    ignore.push(...onWatchIgnore);
 
     await _sync(filePath, parent);
     history[parent] = obj;
-    if (!force) writeFileSync(HISTORY, JSON.stringify(history));
+    if (!force && objChanged) writeFileSync(HISTORY, JSON.stringify(history));
 
     async function _sync(filePath: string, parent: string) {
         if (ignore.includes(filePath)) return { status: true };
@@ -140,7 +141,9 @@ export async function sync(file = ".", parent = "-15", force = true) {
                 if (result.id) {
                     console.log(`${filePath} synced`);
                     obj[filePath] = result.id;
+                    objChanged = true;
                 } else {
+                    onWatchIgnore.push(filePath);
                     return { status: false, value: filePath };
                 }
             }
@@ -151,13 +154,14 @@ export async function sync(file = ".", parent = "-15", force = true) {
                 files = results.filter(result => !result.status).map(result => result.value as string);
                 if (results.filter(result => result.status).length < 1) {
                     console.log(`unable to sync these files: ${files}`);
-                    onWatchIgnore.push(...files);
                     break;
                 };
             }
 
         } else if (stats.isFile()) {
             if (obj[filePath] === String(stats.mtimeMs)) return { status: true };
+            obj[filePath] = String(stats.mtimeMs);
+            objChanged = true;
             body.type = "file";
             body.extension = fileMap[extname(filePath).substring(1).toLowerCase()] || "PLAINTEXT";
             if (["CERTIFICATE", "CONFIG", "CSV", "HTMLDOC", "JAVASCRIPT", "JSON", "PLAINTEXT", "SCSS", "STYLESHEET", "XMLDOC"].includes(body.extension)) {
@@ -169,7 +173,6 @@ export async function sync(file = ".", parent = "-15", force = true) {
             const result: { id: string; } = await request(url, body);
             if (result.id) {
                 console.log(`${filePath} synced`);
-                obj[filePath] = String(stats.mtimeMs);
             } else {
                 return { status: false, value: filePath };
             }
