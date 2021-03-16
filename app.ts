@@ -1,9 +1,10 @@
 import axios from "axios";
 import { readdir, stat, readFile } from 'fs/promises';
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
 import { resolve, basename, extname } from "path";
 import FormData from 'form-data';
 import { prompt } from "readline-sync";
+import { red } from "chalk";
 
 const fileMap: { [key: string]: string; } = {};
 fileMap.appcache = "APPCACHE";
@@ -77,10 +78,8 @@ const CONFIG = resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
 const onWatchIgnore: string[] = [];
 
-if (!existsSync(CONFIG)) {
-    console.log("run 'h3-sync init' first");
-    process.exit();
-}
+let history: any, ignore: any, config: any;
+
 
 export function init() {
     console.log("enter suitelet url");
@@ -93,6 +92,14 @@ export function init() {
 };
 
 export async function watch(file = ".", parent = "-15") {
+    try {
+        history = JSON.parse(readFileSync(HISTORY, { encoding: "utf-8" }));
+        config = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" }));
+        ignore = readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file));
+    } catch (error) {
+        console.log("run h3-sync init first");
+        process.exit();
+    }
     const filePath = resolve(file);
     if (!existsSync(filePath)) {
         console.log("file does not exists");
@@ -105,14 +112,12 @@ export async function watch(file = ".", parent = "-15") {
     }
 };
 
-const history = JSON.parse(readFileSync(HISTORY, { encoding: "utf-8" }));
-const { url, key }: { url: string, key: string; } = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" }));
-const ignore = readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file));
 
 export async function sync(filePath: string, parent: string, force: boolean) {
 
     let objChanged = false;
     const obj = !force && history[parent] ? history[parent] : {};
+    const { url, key } = config;
     ignore.push(...onWatchIgnore);
 
     await _sync(filePath, parent);
@@ -137,31 +142,44 @@ export async function sync(filePath: string, parent: string, force: boolean) {
         if (stats.isDirectory()) {
             if (!obj[filePath]) {
                 body.type = "folder";
-                const result: { id: string; } = await request(url, body);
+                const result = await request(url, body);
                 if (result.id) {
                     console.log(`${filePath} synced`);
                     obj[filePath] = result.id;
                     objChanged = true;
                 } else {
-                    onWatchIgnore.push(filePath);
-                    return { status: false, value: filePath };
+                    return { status: false, filePath, error: result?.error };
                 }
             }
             let files = await readdir(filePath);
             files = files.map(file => resolve(filePath, file));
+
             while (files.length > 0) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                files = results.filter(result => !result.status).map(result => result.value as string);
-                if (results.filter(result => result.status).length < 1) {
-                    console.log(`unable to sync these files: ${files}`);
+                const failed = results.filter(result => !result.status);
+                const passed = results.filter(result => result.status);
+
+                if (passed.length < 1) {
+                    failed.map(result => {
+                        const { filePath, error } = result;
+                        console.log(`unable to sync: ${filePath}`);
+                        error && console.log(red(error));
+                        const stats = statSync(filePath as string);
+                        if (stats.isFile()) {
+                            objChanged = true;
+                            obj[filePath as string] = String(stats.mtimeMs);
+                        } else if (stats.isDirectory()) {
+                            onWatchIgnore.push(filePath as string);
+                        }
+                    });
                     break;
                 };
+                
+                files = failed.map(result => result.filePath as string);
             }
 
         } else if (stats.isFile()) {
             if (obj[filePath] === String(stats.mtimeMs)) return { status: true };
-            obj[filePath] = String(stats.mtimeMs);
-            objChanged = true;
             body.type = "file";
             body.extension = fileMap[extname(filePath).substring(1).toLowerCase()] || "PLAINTEXT";
             if (["CERTIFICATE", "CONFIG", "CSV", "HTMLDOC", "JAVASCRIPT", "JSON", "PLAINTEXT", "SCSS", "STYLESHEET", "XMLDOC"].includes(body.extension)) {
@@ -170,11 +188,13 @@ export async function sync(filePath: string, parent: string, force: boolean) {
             else {
                 body.contents = await readFile(filePath, { encoding: 'base64' });
             }
-            const result: { id: string; } = await request(url, body);
+            const result = await request(url, body);
             if (result.id) {
+                obj[filePath] = String(stats.mtimeMs);
+                objChanged = true;
                 console.log(`${filePath} synced`);
             } else {
-                return { status: false, value: filePath };
+                return { status: false, filePath, error: result?.error };
             }
         }
         return { status: true };
