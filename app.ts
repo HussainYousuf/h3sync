@@ -1,6 +1,6 @@
 import axios from "axios";
 import { readdir, stat, readFile } from 'fs/promises';
-import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, basename, extname } from "path";
 import FormData from 'form-data';
 import { prompt } from "readline-sync";
@@ -76,7 +76,6 @@ fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 const IGNORE = ".h3ignore";
 const CONFIG = resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
-const onWatchIgnore: string[] = [];
 
 let history: any, ignore: any, config: any;
 
@@ -116,12 +115,13 @@ export async function watch(file = ".", parent = "-15") {
 export async function sync(filePath: string, parent: string, force: boolean) {
 
     let objChanged = false;
-    const obj = !force && history[parent] ? history[parent] : {};
+    const obj = !force && history[parent] ? history[parent] : { [filePath]: parent };
+
     const { url, key } = config;
-    ignore.push(...onWatchIgnore);
 
     await _sync(filePath, parent);
     history[parent] = obj;
+
     if (!force && objChanged) writeFileSync(HISTORY, JSON.stringify(history));
 
     async function _sync(filePath: string, parent: string) {
@@ -148,7 +148,7 @@ export async function sync(filePath: string, parent: string, force: boolean) {
                     obj[filePath] = result.id;
                     objChanged = true;
                 } else {
-                    return { status: false, filePath, error: result?.error };
+                    return { status: false, filePath, error: result.error, isDir: true };
                 }
             }
             let files = await readdir(filePath);
@@ -156,26 +156,27 @@ export async function sync(filePath: string, parent: string, force: boolean) {
 
             while (files.length > 0) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                const failed = results.filter(result => !result.status);
-                const passed = results.filter(result => result.status);
+                files = [];
+                results.filter(result => !result.status).map(result => {
 
-                if (passed.length < 1) {
-                    failed.map(result => {
-                        const { filePath, error } = result;
-                        console.log(`unable to sync: ${filePath}`);
-                        error && console.log(red(error));
-                        const stats = statSync(filePath as string);
-                        if (stats.isFile()) {
+                    if (result.error) {
+                        const { filePath, error, isDir, mtimeMs } = result;
+                        console.log(red(`unable to sync: ${filePath}`));
+                        console.log(red(error));
+
+                        if (mtimeMs) {
                             objChanged = true;
-                            obj[filePath as string] = String(stats.mtimeMs);
-                        } else if (stats.isDirectory()) {
-                            onWatchIgnore.push(filePath as string);
+                            obj[filePath as string] = mtimeMs;
+                        } else if (isDir) {
+                            ignore.push(filePath as string);
                         }
-                    });
-                    break;
-                };
-                
-                files = failed.map(result => result.filePath as string);
+                        
+                    } else {
+                        files.push(result.filePath as string);
+                    }
+
+                });
+
             }
 
         } else if (stats.isFile()) {
@@ -194,7 +195,7 @@ export async function sync(filePath: string, parent: string, force: boolean) {
                 objChanged = true;
                 console.log(`${filePath} synced`);
             } else {
-                return { status: false, filePath, error: result?.error };
+                return { status: false, filePath, error: result.error, mtimeMs: String(stats.mtimeMs) };
             }
         }
         return { status: true };

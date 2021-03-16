@@ -80,7 +80,7 @@ fileMap.zip = fileMap.lzh = fileMap.lha = "ZIP";
 const IGNORE = ".h3ignore";
 const CONFIG = path_1.resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
-const onWatchIgnore = [];
+let history, ignore, config;
 function init() {
     console.log("enter suitelet url");
     const url = readline_sync_1.prompt();
@@ -93,6 +93,15 @@ function init() {
 exports.init = init;
 ;
 async function watch(file = ".", parent = "-15") {
+    try {
+        history = JSON.parse(fs_1.readFileSync(HISTORY, { encoding: "utf-8" }));
+        config = JSON.parse(fs_1.readFileSync(CONFIG, { encoding: "utf-8" }));
+        ignore = fs_1.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => path_1.resolve(file));
+    }
+    catch (error) {
+        console.log("run h3-sync init first");
+        process.exit();
+    }
     const filePath = path_1.resolve(file);
     if (!fs_1.existsSync(filePath)) {
         console.log("file does not exists");
@@ -106,21 +115,10 @@ async function watch(file = ".", parent = "-15") {
 }
 exports.watch = watch;
 ;
-let history, ignore, config;
-try {
-    history = JSON.parse(fs_1.readFileSync(HISTORY, { encoding: "utf-8" }));
-    config = JSON.parse(fs_1.readFileSync(CONFIG, { encoding: "utf-8" }));
-    ignore = fs_1.readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => path_1.resolve(file));
-}
-catch (error) {
-    console.log("run h3-sync init first");
-    process.exit();
-}
 async function sync(filePath, parent, force) {
     let objChanged = false;
-    const obj = !force && history[parent] ? history[parent] : {};
+    const obj = !force && history[parent] ? history[parent] : { [filePath]: parent };
     const { url, key } = config;
-    ignore.push(...onWatchIgnore);
     await _sync(filePath, parent);
     history[parent] = obj;
     if (!force && objChanged)
@@ -144,29 +142,36 @@ async function sync(filePath, parent, force) {
                     objChanged = true;
                 }
                 else {
-                    console.log("unable to sync", filePath);
-                    result.error && console.log(result.error);
-                    onWatchIgnore.push(filePath);
-                    return { status: false, value: filePath };
+                    return { status: false, filePath, error: result.error, isDir: true };
                 }
             }
             let files = await promises_1.readdir(filePath);
             files = files.map(file => path_1.resolve(filePath, file));
             while (files.length > 0) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                files = results.filter(result => !result.status).map(result => result.value);
-                if (results.filter(result => result.status).length < 1) {
-                    // console.log(`unable to sync these files: ${files}`);
-                    break;
-                }
-                ;
+                files = [];
+                results.filter(result => !result.status).map(result => {
+                    if (result.error) {
+                        const { filePath, error, isDir, mtimeMs } = result;
+                        console.log(chalk_1.red(`unable to sync: ${filePath}`));
+                        console.log(chalk_1.red(error));
+                        if (mtimeMs) {
+                            objChanged = true;
+                            obj[filePath] = mtimeMs;
+                        }
+                        else if (isDir) {
+                            ignore.push(filePath);
+                        }
+                    }
+                    else {
+                        files.push(result.filePath);
+                    }
+                });
             }
         }
         else if (stats.isFile()) {
             if (obj[filePath] === String(stats.mtimeMs))
                 return { status: true };
-            obj[filePath] = String(stats.mtimeMs);
-            objChanged = true;
             body.type = "file";
             body.extension = fileMap[path_1.extname(filePath).substring(1).toLowerCase()] || "PLAINTEXT";
             if (["CERTIFICATE", "CONFIG", "CSV", "HTMLDOC", "JAVASCRIPT", "JSON", "PLAINTEXT", "SCSS", "STYLESHEET", "XMLDOC"].includes(body.extension)) {
@@ -177,12 +182,12 @@ async function sync(filePath, parent, force) {
             }
             const result = await request(url, body);
             if (result.id) {
+                obj[filePath] = String(stats.mtimeMs);
+                objChanged = true;
                 console.log(`${filePath} synced`);
             }
             else {
-                console.log("unable to sync", filePath);
-                result.error && console.log(chalk_1.red(result.error));
-                return { status: false, value: filePath };
+                return { status: false, filePath, error: result.error, mtimeMs: String(stats.mtimeMs) };
             }
         }
         return { status: true };
