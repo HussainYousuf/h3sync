@@ -147,14 +147,15 @@ async function sync(filePath, parent, force) {
             }
             let files = await promises_1.readdir(filePath);
             files = files.map(file => path_1.resolve(filePath, file));
-            while (files.length > 0) {
+            while (files.length) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                files = [];
-                results.filter(result => !result.status).map(result => {
-                    if (result.error) {
-                        const { filePath, error, isDir, mtimeMs } = result;
+                const passed = results.filter(({ status }) => status);
+                if (passed.length)
+                    files = results.filter(({ status }) => !status).map(({ filePath }) => filePath);
+                else {
+                    results.map(({ filePath, error, isDir, mtimeMs }) => {
                         console.log(chalk_1.red(`unable to sync: ${filePath}`));
-                        console.log(chalk_1.red(error));
+                        error && console.log(chalk_1.red(error));
                         if (mtimeMs) {
                             objChanged = true;
                             obj[filePath] = mtimeMs;
@@ -162,11 +163,9 @@ async function sync(filePath, parent, force) {
                         else if (isDir) {
                             ignore.push(filePath);
                         }
-                    }
-                    else {
-                        files.push(result.filePath);
-                    }
-                });
+                    });
+                    break;
+                }
             }
         }
         else if (stats.isFile()) {
