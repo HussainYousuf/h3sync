@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import axios from "axios";
 import { readdir, stat, readFile } from 'fs/promises';
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -6,7 +8,7 @@ import FormData from 'form-data';
 import { prompt } from "readline-sync";
 import { red } from "chalk";
 
-const fileMap: { [key: string]: string; } = {};
+const fileMap: Record<string, string> = {};
 fileMap.appcache = "APPCACHE";
 fileMap.dwf = "AUTOCAD";
 fileMap.dwg = "AUTOCAD";
@@ -77,27 +79,48 @@ const IGNORE = ".h3ignore";
 const CONFIG = resolve(__dirname, ".h3config");
 const HISTORY = ".h3history";
 
-let history: any, ignore: any, config: any;
+let history: any, ignore: any, url: string, key: string;
+
+function cli() {
+    try {
+        ({ url, key } = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" })));
+    } catch (error) {
+        init();
+        return;
+    }
+
+    let args = process.argv.slice(2);
+    if (args[0] == "init") init();
+    else if (args[0] == "watch") watch(args[1], args[2]);
+    else console.log(`
+        usage: 
+        h3sync init
+        h3sync watch
+    `);
+}
+
+cli();
 
 
-export function init() {
+export async function init() {
     console.log("enter suitelet url");
     const url = prompt();
     console.log("enter key");
     const key = prompt();
+    const result = await request({ type: "ping" });
+    if (!result.status) throw Error("incorrect credentials");
     writeFileSync(CONFIG, JSON.stringify({ url, key }));
-    writeFileSync(IGNORE, ".git\n.gitignore\n.h3ignore\n.h3history\nnode_modules");
-    writeFileSync(HISTORY, "{}");
 };
 
 export async function watch(file = ".", parent = "-15") {
     try {
         history = JSON.parse(readFileSync(HISTORY, { encoding: "utf-8" }));
-        config = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" }));
         ignore = readFileSync(IGNORE, { encoding: "utf-8" }).split("\n").filter(file => file.trim()).map(file => resolve(file));
     } catch (error) {
-        console.log("run h3-sync init first");
-        process.exit();
+        writeFileSync(IGNORE, ".git\n.gitignore\n.h3ignore\n.h3history\nnode_modules");
+        writeFileSync(HISTORY, "{}");
+        watch(file, parent);
+        return;
     }
     const filePath = resolve(file);
     if (!existsSync(filePath)) {
@@ -107,7 +130,7 @@ export async function watch(file = ".", parent = "-15") {
     console.log("watch started");
     while (true) {
         await sync(filePath, parent, false);
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 100));
     }
 };
 
@@ -116,8 +139,6 @@ export async function sync(filePath: string, parent: string, force: boolean) {
 
     let objChanged = false;
     const obj = !force && history[parent] ? history[parent] : { [filePath]: parent };
-
-    const { url, key } = config;
 
     await _sync(filePath, parent);
     history[parent] = obj;
@@ -133,16 +154,14 @@ export async function sync(filePath: string, parent: string, force: boolean) {
             type?: string,
             extension?: string,
             contents?: string,
-            key: string;
         } = {
             name: basename(filePath),
             parent,
-            key
         };
         if (stats.isDirectory()) {
             if (!obj[filePath]) {
                 body.type = "folder";
-                const result = await request(url, body);
+                const result = await request(body);
                 if (result.id) {
                     console.log(`${filePath} synced`);
                     obj[filePath] = result.id;
@@ -187,7 +206,7 @@ export async function sync(filePath: string, parent: string, force: boolean) {
             else {
                 body.contents = await readFile(filePath, { encoding: 'base64' });
             }
-            const result = await request(url, body);
+            const result = await request(body);
             if (result.id) {
                 obj[filePath] = String(stats.mtimeMs);
                 objChanged = true;
@@ -200,10 +219,10 @@ export async function sync(filePath: string, parent: string, force: boolean) {
     }
 };
 
-async function request(url: string, body: any) {
+async function request(body: any) {
     try {
         const form = new FormData();
-        form.append('body', JSON.stringify(body));
+        form.append('body', JSON.stringify({ ...body, key }));
         const headers = Object.assign({ "User-Agent": "Mozilla/5.0" }, form.getHeaders());
         const result = await axios.post(url, form, { headers });
         return result.data;
