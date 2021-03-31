@@ -86,10 +86,9 @@ function cli() {
         ({ url, key } = JSON.parse(readFileSync(CONFIG, { encoding: "utf-8" })));
     } catch (error) {
         init();
-        return;
     }
 
-    let args = process.argv.slice(2);
+    const args = process.argv.slice(2);
     if (args[0] == "init") init();
     else if (args[0] == "watch") watch(args[1], args[2]);
     else console.log(`
@@ -104,9 +103,9 @@ cli();
 
 export async function init() {
     console.log("enter suitelet url");
-    const url = prompt();
+    url = prompt();
     console.log("enter key");
-    const key = prompt();
+    key = prompt();
     const result = await request({ type: "ping" });
     if (!result.status) throw Error("incorrect credentials");
     writeFileSync(CONFIG, JSON.stringify({ url, key }));
