@@ -174,14 +174,14 @@ export async function sync(filePath: string, parent: string, force: boolean) {
 
             while (files.length) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                const passed = results.filter(({ status }) => status);
+                const passed = results.filter(({ status, error }) => status || !error);
                 if (passed.length)
                     files = results.filter(({ status }) => !status).map(({ filePath }) => filePath as string);
 
                 else {
                     results.map(({ filePath, error, isDir, mtimeMs }) => {
                         console.log(red(`unable to sync: ${filePath}`));
-                        error && console.log(red(error));
+                        console.log(red(error));
 
                         if (mtimeMs) {
                             objChanged = true;
