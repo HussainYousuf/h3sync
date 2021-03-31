@@ -174,15 +174,19 @@ export async function sync(filePath: string, parent: string, force: boolean) {
 
             while (files.length) {
                 const results = await Promise.all(files.map(file => _sync(file, obj[filePath])));
-                const passed = results.filter(({ status, error }) => status || !error);
-                if (passed.length)
-                    files = results.filter(({ status }) => !status).map(({ filePath }) => filePath as string);
+                const passed = results.filter(({ status }) => status);
+                const failed = results.filter(({ status }) => !status);
 
+                if (passed.length) {
+                    files = failed.map(({ filePath }) => filePath as string);
+                    if (failed.length > passed.length) {
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+                }
                 else {
-                    results.map(({ filePath, error, isDir, mtimeMs }) => {
+                    failed.map(({ filePath, error, isDir, mtimeMs }) => {
                         console.log(red(`unable to sync: ${filePath}`));
-                        console.log(red(error));
-
+                        error && console.log(red(error));
                         if (mtimeMs) {
                             objChanged = true;
                             obj[filePath as string] = mtimeMs;
