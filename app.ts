@@ -179,9 +179,9 @@ export async function sync(filePath: string, parent: string, force: boolean) {
 
                 if (passed.length) {
                     files = failed.map(({ filePath }) => filePath as string);
-                    if (failed.length > passed.length) {
-                        await new Promise(r => setTimeout(r, 500));
-                    }
+                    // if (failed.length > passed.length) {
+                    //     await new Promise(r => setTimeout(r, 500));
+                    // }
                 }
                 else {
                     failed.map(({ filePath, error, isDir, mtimeMs }) => {
